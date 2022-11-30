@@ -30,7 +30,7 @@ psycopg2
 pydot
 pyopenssl
 PyPDF2
-pypiwin32
+pypiwin32 # only for win32 platform but pipfile got trouble converting this https://github.com/pypa/pipenv/issues/4307
 pyserial
 python-dateutil
 python-ldap
