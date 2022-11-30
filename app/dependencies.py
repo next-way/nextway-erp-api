@@ -12,6 +12,9 @@ def odoo_env() -> Environment:
     #     locals in an async program.
     #
     # check_signaling() is to refresh the registry and cache when needed.
+    # HACK: when running API outside of docker network where Odoo is running
+    if odoo.tools.config["db_host"] == "host.docker.internal":
+        odoo.tools.config["db_host"] = "0.0.0.0"
     registry = odoo.registry(odoo.tools.config["db_name"]).check_signaling()
     # manage_change() is to signal other instances when the registry or cache
     # needs refreshing.
