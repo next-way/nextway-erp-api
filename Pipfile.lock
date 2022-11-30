@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "6812b47b7d8d61a19bc7680cf37ea8e2015afd2d106f4cb964bc14c6d4a2c3df"
+            "sha256": "df49c1d98f8bd29bf38b0f0256e9e37af652e33c6885c9cfb802d82af87fbcfe"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -572,7 +572,7 @@
         "odoo": {
             "editable": true,
             "git": "https://git@github.com/odoo/odoo",
-            "ref": "4e85ee767f9cc0781823c0bfb4c79df8da1c6c2e"
+            "ref": "f173300f4f24d600693ab54c8db0995723a304e9"
         },
         "ofxparse": {
             "hashes": [
@@ -899,11 +899,10 @@
         },
         "pypdf2": {
             "hashes": [
-                "sha256:7074034d199a817f3c0190c533a1a64ed4237cc060cdb1ebc3a6da796a2c71c0",
-                "sha256:f1b0df8cd686d2ed069088b903ec65fb0f53e9c7837adc8139eccfbb7eb9141f"
+                "sha256:e28f902f2f0a1603ea95ebe21dff311ef09be3d0f0ef29a3e44a932729564385"
             ],
             "index": "pypi",
-            "version": "==2.11.2"
+            "version": "==1.26.0"
         },
         "pyserial": {
             "hashes": [
@@ -1294,11 +1293,11 @@
         },
         "werkzeug": {
             "hashes": [
-                "sha256:7ea2d48322cc7c0f8b3a215ed73eabd7b5d75d0b50e31ab006286ccff9e00b8f",
-                "sha256:f979ab81f58d7318e064e99c4506445d60135ac5cd2e177a2de0089bfd4c9bd5"
+                "sha256:63d3dc1cf60e7b7e35e97fa9861f7397283b75d765afcaefd993d6046899de8f",
+                "sha256:aa2bb6fc8dee8d6c504c0ac1e7f5f7dc5810a9903e793b6f715a9f015bdadb9a"
             ],
             "index": "pypi",
-            "version": "==2.2.2"
+            "version": "==2.0.2"
         },
         "xlrd": {
             "hashes": [
