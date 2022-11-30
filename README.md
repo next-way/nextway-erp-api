@@ -33,3 +33,9 @@ INFO:     Application startup complete.
 ```
 
 Head on to http://127.0.0.1:8082/docs/ to try out!
+
+### Environment variables
+
+**DEV_ADDONS_PATH**
+
+A comma-separated list of directories to add onto the `addons_path` loaded by `ODOO_RC`.
