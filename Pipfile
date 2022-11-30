@@ -1,0 +1,57 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+fastapi = "==0.88.0"
+uvicorn = {version = "==0.20.0", extras = ["standard"]}
+#-r https://raw.githubusercontent.com/odoo/odoo/16.0/requirements.txt
+#-e git+https://github.com/odoo/odoo@16.0#egg=odoo
+babel = "*"
+chardet = "*"
+cryptography = "*"
+decorator = "*"
+docutils = "*"
+ebaysdk = "*"
+freezegun = "*"
+gevent = "*"
+greenlet = "*"
+idna = "*"
+jinja2 = "*"
+libsass = "*"
+lxml = "*"
+markupsafe = "*"
+num2words = "*"
+ofxparse = "*"
+passlib = "*"
+pillow = "*"
+polib = "*"
+psutil = "*"
+psycopg2 = "*"
+pydot = "*"
+pyopenssl = "*"
+pypdf2 = "*"
+#pypiwin32 = "*"
+pyserial = "*"
+python-dateutil = "*"
+python-ldap = "*"
+python-stdnum = "*"
+pytz = "*"
+pyusb = "*"
+qrcode = "*"
+reportlab = "*"
+requests = "*"
+urllib3 = "*"
+vobject = "*"
+werkzeug = "*"
+xlrd = "*"
+xlsxwriter = "*"
+xlwt = "*"
+zeep = "*"
+odoo = {editable = true, ref = "16.0", git = "https://git@github.com/odoo/odoo"}
+
+[dev-packages]
+
+[requires]
+python_version = "3.10"
