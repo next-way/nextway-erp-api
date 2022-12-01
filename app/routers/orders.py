@@ -4,6 +4,7 @@ import odoo
 import pydantic
 from fastapi import APIRouter, Depends, Query
 
+from .. import utils
 from ..dependencies import odoo_env
 
 router = APIRouter(
@@ -13,19 +14,47 @@ router = APIRouter(
 )
 
 
+class PartnerDeliveryAddress(pydantic.BaseModel):
+    street: str = None
+    street2: str = None
+    zip: str = None
+    city: str = None
+    state_id: int = None  # State name
+    country_id: int = None  # Country name
+
+    class Config:
+        orm_mode = True
+        getter_dict = utils.GenericOdooGetter
+
+
 class Order(pydantic.BaseModel):
     id: int
     display_name: str
     date_order: datetime
     state: str
+    delivery_address: PartnerDeliveryAddress = None
 
     @classmethod
-    def from_sale_order(cls, p: odoo.models.Model) -> "Order":
+    def from_sale_order(
+        cls, p: odoo.models.Model, env: odoo.api.Environment
+    ) -> "Order":
+        delivery_address_id = (
+            p.partner_shipping_id.address_get(["delivery"])["delivery"]
+            if p.partner_id
+            else None
+        )
+        delivery_address = None
+        if delivery_address_id:
+            delivery_address = PartnerDeliveryAddress.from_orm(
+                env["res.partner"].browse(delivery_address_id)
+            )
+            # delivery_address = env["res.partner"].browse(delivery_address_id)
         return Order(
             id=p.id,
             display_name=p.display_name,
             date_order=p.date_order,
             state=cls._state(p.picking_ids.state),
+            delivery_address=delivery_address,
         )
 
     @classmethod
@@ -62,4 +91,4 @@ async def list_orders(
     orders = all_orders.filtered(lambda o: o.picking_ids.state in state)
     if show_unassigned:
         orders += all_orders.filtered(lambda o: not o.picking_ids.state)
-    return [Order.from_sale_order(order) for order in orders]
+    return [Order.from_sale_order(order, env) for order in orders]
