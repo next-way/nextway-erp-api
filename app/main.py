@@ -1,7 +1,7 @@
 import odoo
 from fastapi import FastAPI
 
-from .routers import orders, partners
+from .routers import authentication, orders, partners
 
 # Follows https://fastapi.tiangolo.com/tutorial/bigger-applications/
 # Follows https://github.com/acsone/odooxp2021-fastapi/blob/master/odoo_fastapi_demo/app.py
@@ -25,5 +25,6 @@ def initialize_odoo() -> None:
     odoo.tools.config.parse_config([])
 
 
+app.include_router(authentication.router)
 app.include_router(partners.router)
 app.include_router(orders.router)

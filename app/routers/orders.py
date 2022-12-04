@@ -2,10 +2,10 @@ from datetime import datetime
 
 import odoo
 import pydantic
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Security
 
 from .. import utils
-from ..dependencies import odoo_env
+from ..dependencies import User, get_current_active_user, get_odoo_user, odoo_env
 
 router = APIRouter(
     prefix="/orders",
@@ -80,6 +80,7 @@ async def list_orders(
     state: list[str]
     | None = Query(default=["assigned"], description=STATE_DESCRIPTION),
     env: odoo.api.Environment = Depends(odoo_env),
+    current_user: User = Security(get_current_active_user, scopes=["orders:list"]),
 ):
     domain = []
     all_orders = env["sale.order"].search(domain)
@@ -88,7 +89,12 @@ async def list_orders(
     if "unassigned" in state:
         state.pop(state.index("unassigned"))
         show_unassigned = True
-    orders = all_orders.filtered(lambda o: o.picking_ids.state in state)
+    # Filtering other states should only include the user's
+    __, odoo_user = get_odoo_user(current_user.username)
+    orders = all_orders.filtered(
+        lambda o: o.picking_ids.state in state
+        and o.picking_ids.user_id.id == odoo_user.id
+    )
     if show_unassigned:
         orders += all_orders.filtered(lambda o: not o.picking_ids.state)
     return [Order.from_sale_order(order, env) for order in orders]

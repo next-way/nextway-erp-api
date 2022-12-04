@@ -23,7 +23,6 @@ libsass = "*"
 markupsafe = "*"
 num2words = "*"
 ofxparse = "*"
-passlib = "*"
 pillow = "*"
 polib = "*"
 psutil = "*"
@@ -51,6 +50,9 @@ odoo = {editable = true, ref = "16.0", git = "https://git@github.com/odoo/odoo"}
 psycopg2-binary = "*"
 psycopg2 = "*"
 lxml = "*"
+python-multipart = "*"
+python-jose = {extras = ["cryptography"], version = "*"}
+passlib = {extras = ["bcrypt"], version = "*"}
 
 [dev-packages]
 pre-commit = "*"

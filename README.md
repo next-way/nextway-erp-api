@@ -39,3 +39,11 @@ Head on to http://127.0.0.1:8082/docs/ to try out!
 **DEV_ADDONS_PATH**
 
 A comma-separated list of directories to add onto the `addons_path` loaded by `ODOO_RC`.
+
+**SECRET_KEY**
+
+```openssl rand -hex 32```
+
+And keep it secured.
+
+**ACCESS_TOKEN_EXPIRE_MINUTES**
