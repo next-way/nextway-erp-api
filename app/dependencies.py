@@ -6,7 +6,7 @@ import contextlib
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import odoo
 from dotenv import load_dotenv
@@ -20,6 +20,15 @@ from pydantic import BaseModel
 from .settings import SETTINGS
 
 
+def is_docker():
+    cgroup = Path("/proc/self/cgroup")
+    return (
+        Path("/.dockerenv").is_file()
+        or cgroup.is_file()
+        and cgroup.read_text().find("docker") > -1
+    )
+
+
 def odoo_env() -> Environment:
     #
     # /!\ With Odoo < 15 you need to wrap all this in 'with
@@ -29,7 +38,7 @@ def odoo_env() -> Environment:
     #
     # check_signaling() is to refresh the registry and cache when needed.
     # HACK: when running API outside of docker network where Odoo is running
-    if odoo.tools.config["db_host"] == "host.docker.internal":
+    if odoo.tools.config["db_host"] == "host.docker.internal" and is_docker() is False:
         odoo.tools.config["db_host"] = "0.0.0.0"
         if "DEV_ADDONS_PATH" in os.environ:
             odoo.tools.config["addons_path"] += "," + os.environ["DEV_ADDONS_PATH"]
@@ -70,15 +79,15 @@ class Token(BaseModel):
 
 
 class TokenData(BaseModel):
-    username: str | None = None
+    username: Optional[str] = None
     scopes: List[str] = []
 
 
 class User(BaseModel):
     username: str
-    email: str | None = None
-    full_name: str | None = None
-    disabled: bool | None = None
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    disabled: Optional[bool] = None
 
 
 class UserInDB(User):
@@ -164,7 +173,7 @@ def authenticate_user(username: str, password: str):
     return user
 
 
-def create_access_token(data: dict, expires_delta: timedelta | None = None):
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta

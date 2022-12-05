@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 import odoo
 import pydantic
@@ -77,8 +78,9 @@ Must be one of the following:
 
 @router.get("/")
 async def list_orders(
-    state: list[str]
-    | None = Query(default=["assigned"], description=STATE_DESCRIPTION),
+    state: Optional[list[str]] = Query(
+        default=["assigned"], description=STATE_DESCRIPTION
+    ),
     env: odoo.api.Environment = Depends(odoo_env),
     current_user: User = Security(get_current_active_user, scopes=["orders:list"]),
 ):
