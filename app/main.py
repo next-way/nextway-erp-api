@@ -26,5 +26,6 @@ def initialize_odoo() -> None:
 
 
 app.include_router(authentication.router)
-app.include_router(partners.router)
+# TODO Consider removing partners/ completely. Only here to test unprotected API endpoint
+# app.include_router(partners.router)
 app.include_router(orders.router)

@@ -3,7 +3,6 @@ ARG env_file=.env.shared
 USER root
 WORKDIR /usr/local/
 COPY fastapi-requirements.txt .
-RUN pip install pip --upgrade
 RUN pip install -r fastapi-requirements.txt
 ADD . api/
 WORKDIR api

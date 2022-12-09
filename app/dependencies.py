@@ -19,6 +19,14 @@ from pydantic import BaseModel
 
 from .settings import SETTINGS
 
+API_KEY_NAME = "nextway.api"
+API_KEY_SCOPE = ",".join(
+    [
+        "me_profile",
+        "orders:list",
+    ]
+)
+
 
 def is_docker():
     cgroup = Path("/proc/self/cgroup")
@@ -80,6 +88,7 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     username: Optional[str] = None
+    odoo_access_token: Optional[str] = None
     scopes: List[str] = []
 
 
@@ -142,13 +151,42 @@ def get_odoo_env():
     yield from odoo_env()
 
 
-def get_odoo_user(username: str):
+class UserWithAccessTokenDoesNotExist(Exception):
+    pass
+
+
+class APIAccessTokenDoesNotExist(Exception):
+    pass
+
+
+def get_odoo_user(username: str = None, odoo_access_token: Optional[str] = None):
+    """
+    Get Odoo User
+
+    :param username: Provide username (In Odoo, User.login)
+    :param odoo_access_token: (Optional) Must match user with API key
+    :return: (FastAPI UserInDB, Odoo User)
+    """
     with get_odoo_env() as env:
         user = env["res.users"].search(
             [("login", "=", username)]
         )  # Odoo ref to 'login' instead of username
+        if odoo_access_token:
+            api_key = env["res.users.apikeys"].search(
+                [
+                    ("name", "=", API_KEY_NAME),
+                    ("user_id.id", "=", user.id),
+                ]
+            )
+            if not api_key:
+                raise APIAccessTokenDoesNotExist()
+            if not api_key.with_user(user)._check_credentials(
+                scope=API_KEY_SCOPE,
+                key=odoo_access_token,
+            ):
+                raise UserWithAccessTokenDoesNotExist()
         if len(user) != 1:
-            return
+            return None, None
         return (
             UserInDB(
                 username=user.login,
@@ -161,13 +199,11 @@ def get_odoo_user(username: str):
         )
 
 
-# def authenticate_user(fake_db, username: str, password: str):
 def authenticate_user(username: str, password: str):
-    # user = get_user(fake_db, username)
+    """Authenticate user with username and password (plain text)"""
     user, odoo_user = get_odoo_user(username)
     if not user:
         return False
-    # if not verify_password(password, user.hashed_password):
     if not odoo_verify_password(odoo_user, password):
         return False
     return user
@@ -188,6 +224,7 @@ async def get_current_user(
     security_scopes: SecurityScopes,
     token: str = Depends(oauth2_scheme),
 ):
+    """Get user from decoded JWT. Must have Odoo api key / access token."""
     if security_scopes.scopes:
         authenticate_value = f'Bearer scope="{security_scopes.scope_str}"'
     else:
@@ -199,15 +236,40 @@ async def get_current_user(
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
+        username, odoo_access_token = payload.get("sub", "").split("|", maxsplit=1)
+        if odoo_access_token is None or username is None:
             raise credentials_exception
         token_scopes = payload.get("scopes", [])
-        token_data = TokenData(scopes=token_scopes, username=username)
-    except JWTError:
-        raise credentials_exception
+        token_data = TokenData(
+            scopes=token_scopes,
+            username=username,
+            odoo_access_token=odoo_access_token,
+        )
+    except JWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Could not validate credentials. {str(exc)}",
+            headers={"WWW-Authenticate": authenticate_value},
+        )
     # user = get_user(fake_users_db, username=token_data.username)
-    user, __ = get_odoo_user(username=token_data.username)
+    try:
+        user, __ = get_odoo_user(
+            username=token_data.username, odoo_access_token=odoo_access_token
+        )
+    except APIAccessTokenDoesNotExist:
+        # Revoked/deleted in Odoo
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API Access Token Does Not Exist",
+            headers={"WWW-Authenticate": authenticate_value},
+        )
+    except UserWithAccessTokenDoesNotExist:
+        # Not associated to user
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API Access Token Does Not Authenticate",
+            headers={"WWW-Authenticate": authenticate_value},
+        )
     if user is None:
         raise credentials_exception
     for scope in security_scopes.scopes:
