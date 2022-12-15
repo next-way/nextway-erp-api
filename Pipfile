@@ -53,6 +53,7 @@ lxml = "*"
 python-multipart = "*"
 python-jose = {extras = ["cryptography"], version = "*"}
 passlib = {extras = ["bcrypt"], version = "*"}
+fastapi-pagination = {extras = ["all"], version = "*"}
 
 [dev-packages]
 pre-commit = "*"

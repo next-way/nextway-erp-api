@@ -4,6 +4,7 @@ from typing import Optional
 import odoo
 import pydantic
 from fastapi import APIRouter, Depends, Query, Security
+from fastapi_pagination import Page, paginate
 
 from .. import utils
 from ..dependencies import User, get_current_active_user, get_odoo_user, odoo_env
@@ -76,7 +77,7 @@ Must be one of the following:
 """
 
 
-@router.get("/")
+@router.get("/", response_model=Page[Order])
 async def list_orders(
     state: Optional[list[str]] = Query(
         default=["assigned"], description=STATE_DESCRIPTION
@@ -98,5 +99,6 @@ async def list_orders(
         and o.picking_ids.user_id.id == odoo_user.id
     )
     if show_unassigned:
-        orders += all_orders.filtered(lambda o: not o.picking_ids.state)
-    return [Order.from_sale_order(order, env) for order in orders]
+        orders |= all_orders.filtered(lambda o: not o.picking_ids.state)
+    # TODO Paginate `orders` instead?
+    return paginate([Order.from_sale_order(order, env) for order in orders])

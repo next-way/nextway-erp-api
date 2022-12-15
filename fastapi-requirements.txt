@@ -7,3 +7,4 @@ python-multipart==0.0.5
 uvicorn==0.20.0
 python-dotenv==0.21.0
 pyOpenSSL==22.1.0
+fastapi-pagination[all]==0.11.1

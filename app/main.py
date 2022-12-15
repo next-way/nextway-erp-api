@@ -1,5 +1,6 @@
 import odoo
 from fastapi import FastAPI
+from fastapi_pagination import add_pagination
 
 from .routers import authentication, orders, partners
 
@@ -29,3 +30,6 @@ app.include_router(authentication.router)
 # TODO Consider removing partners/ completely. Only here to test unprotected API endpoint
 # app.include_router(partners.router)
 app.include_router(orders.router)
+
+# Must be added last
+add_pagination(app)
