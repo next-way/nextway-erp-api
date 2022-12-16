@@ -1,9 +1,11 @@
+import json
+import logging
 from datetime import datetime
 from typing import Optional
 
 import odoo
 import pydantic
-from fastapi import APIRouter, Depends, Query, Security
+from fastapi import APIRouter, Depends, Query, Request, Security
 from fastapi_pagination import Page, paginate
 
 from .. import utils
@@ -76,15 +78,19 @@ Must be one of the following:
 - unassigned
 """
 
+logger = logging.getLogger(__name__)
+
 
 @router.get("/", response_model=Page[Order])
 async def list_orders(
+    request: Request,
     state: Optional[list[str]] = Query(
         default=["assigned"], description=STATE_DESCRIPTION
     ),
     env: odoo.api.Environment = Depends(odoo_env),
     current_user: User = Security(get_current_active_user, scopes=["orders:list"]),
 ):
+    logger.debug("[.] Request headers %s" % str(request.headers.raw))
     domain = []
     all_orders = env["sale.order"].search(domain)
     # Filtering from state

@@ -1,3 +1,6 @@
+import logging
+from os import path
+
 import odoo
 from fastapi import FastAPI
 from fastapi_pagination import add_pagination
@@ -6,6 +9,9 @@ from .routers import authentication, orders, partners
 
 # Follows https://fastapi.tiangolo.com/tutorial/bigger-applications/
 # Follows https://github.com/acsone/odooxp2021-fastapi/blob/master/odoo_fastapi_demo/app.py
+
+log_file_path = path.join(path.dirname(path.abspath(__file__)), "logging.conf")
+logging.config.fileConfig(log_file_path, disable_existing_loggers=False)
 
 app = FastAPI()
 

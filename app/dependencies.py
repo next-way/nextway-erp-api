@@ -3,6 +3,7 @@
 # - https://fastapi.tiangolo.com/tutorial/bigger-applications/
 # - https://fastapi.tiangolo.com/advanced/security/oauth2-scopes/
 import contextlib
+import logging
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -18,6 +19,8 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 
 from .settings import SETTINGS
+
+logger = logging.getLogger(__name__)
 
 API_KEY_NAME = "nextway.api"
 API_KEY_SCOPE = ",".join(
@@ -225,6 +228,7 @@ async def get_current_user(
     token: str = Depends(oauth2_scheme),
 ):
     """Get user from decoded JWT. Must have Odoo api key / access token."""
+    logger.debug("[.] security_scopes.scopes %s" % security_scopes.scope_str)
     if security_scopes.scopes:
         authenticate_value = f'Bearer scope="{security_scopes.scope_str}"'
     else:
@@ -246,6 +250,7 @@ async def get_current_user(
             odoo_access_token=odoo_access_token,
         )
     except JWTError as exc:
+        logger.debug("[!] Exception %s" % str(exc))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Could not validate credentials. {str(exc)}",
