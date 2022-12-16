@@ -70,8 +70,9 @@ async def login_for_access_token(
             detail="Cannot authenticate user. Please contact administrator.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    # default 4 hours
     access_token_expires = timedelta(
-        minutes=next(map(int, SETTINGS.get("ACCESS_TOKEN_EXPIRE_MINUTES", 30)))
+        minutes=int(SETTINGS.get("ACCESS_TOKEN_EXPIRE_MINUTES", str(60 * 4)))
     )
     access_token = create_access_token(
         data={"sub": f"{user.username}|{__api_key__}", "scopes": form_data.scopes},
