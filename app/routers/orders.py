@@ -1,5 +1,6 @@
 import logging
-from datetime import datetime
+from datetime import date, datetime
+from enum import Enum
 from typing import Optional
 
 import odoo
@@ -18,12 +19,22 @@ router = APIRouter(
 
 
 class PartnerDeliveryAddress(pydantic.BaseModel):
+    name: str = None
+    display_name: str = None
+    company_name: str = None
     street: str = None
     street2: str = None
     zip: str = None
     city: str = None
-    state_id: int = None  # State name
-    country_id: int = None  # Country name
+    state_id: int = None
+    country_id: int = None
+    state: str = None
+    country: str = None
+    partner_latitude: float = None
+    partner_longitude: float = None
+    phone: str = None
+    mobile: str = None
+    display_address: str = None
 
     class Config:
         orm_mode = True
@@ -33,9 +44,20 @@ class PartnerDeliveryAddress(pydantic.BaseModel):
 class Order(pydantic.BaseModel):
     id: int
     display_name: str
+    # Order date. Creation date of draft/sent orders. Confirmation date of confirmed orders.
     date_order: datetime
+    # Delivery Date. Delivery date promised to customer.
+    commitment_date: datetime = None
     state: str
     delivery_address: PartnerDeliveryAddress = None
+    require_signature: bool = None
+    signed_by: str = None
+    signed_on: datetime = None
+    validity_date: date = None
+    note: str = None
+    is_expired: bool = None
+    amount_total: float = None
+    # TODO Add order items
 
     @classmethod
     def from_sale_order(
@@ -48,16 +70,25 @@ class Order(pydantic.BaseModel):
         )
         delivery_address = None
         if delivery_address_id:
-            delivery_address = PartnerDeliveryAddress.from_orm(
-                env["res.partner"].browse(delivery_address_id)
-            )
-            # delivery_address = env["res.partner"].browse(delivery_address_id)
+            rec_delivery_address = env["res.partner"].browse(delivery_address_id)
+            delivery_address = PartnerDeliveryAddress.from_orm(rec_delivery_address)
+            delivery_address.display_address = rec_delivery_address._display_address()
+            delivery_address.state = rec_delivery_address.state_id.name or ""
+            delivery_address.country = rec_delivery_address.country_id.name or ""
         return Order(
             id=p.id,
             display_name=p.display_name,
             date_order=p.date_order,
+            commitment_date=p.commitment_date if p.commitment_date else None,
             state=cls._state(p.picking_ids.state),
             delivery_address=delivery_address,
+            require_signature=p.require_signature,
+            signed_by=cls._null_for_false(p, "signed_by"),
+            signed_on=p.signed_on,
+            validity_date=p.validity_date,
+            note=cls._null_for_false(p, "note"),
+            is_expired=p.is_expired,
+            amount_total=p.amount_total,
         )
 
     @classmethod
@@ -65,6 +96,13 @@ class Order(pydantic.BaseModel):
         if not state:
             return "unassigned"
         return state
+
+    @classmethod
+    def _null_for_false(cls, order, key):
+        field = order._fields[key]
+        res = getattr(order, key, None)
+        if not res and field.type != "boolean":
+            return None
 
 
 STATE_DESCRIPTION = """\
@@ -76,14 +114,26 @@ Must be one of the following:
 - cancelled
 - unassigned
 """
+# TODO Order by state
 
 logger = logging.getLogger(__name__)
+
+
+class PickingState(str, Enum):
+    assigned = "assigned"
+    waiting = "waiting"
+    confirmed = "confirmed"
+    done = "done"
+    cancelled = "cancelled"
+    unassigned = "unassigned"
 
 
 @router.get("/", response_model=Page[Order])
 async def list_orders(
     state: Optional[list[str]] = Query(
-        default=["assigned"], description=STATE_DESCRIPTION
+        default=[PickingState.assigned],
+        choices=[s.value for s in PickingState],
+        description=STATE_DESCRIPTION,
     ),
     env: odoo.api.Environment = Depends(odoo_env),
     current_user: User = Security(get_current_active_user, scopes=["orders:list"]),
@@ -104,4 +154,5 @@ async def list_orders(
     if show_unassigned:
         orders |= all_orders.filtered(lambda o: not o.picking_ids.state)
     # TODO Paginate `orders` instead?
+    # TODO BUG size is returning length of array instead of matched states/query. total and size are both correct.
     return paginate([Order.from_sale_order(order, env) for order in orders])
