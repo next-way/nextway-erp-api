@@ -7,6 +7,7 @@ import odoo
 import pydantic
 from fastapi import APIRouter, Depends, Query, Security
 from fastapi_pagination import Page, paginate
+from pydantic import Field
 
 from .. import utils
 from ..dependencies import User, get_current_active_user, get_odoo_user, odoo_env
@@ -45,9 +46,27 @@ class Order(pydantic.BaseModel):
     id: int
     display_name: str
     # Order date. Creation date of draft/sent orders. Confirmation date of confirmed orders.
-    date_order: datetime
-    # Delivery Date. Delivery date promised to customer.
-    commitment_date: datetime = None
+    date_order: datetime = Field(description="Confirmation date of confirmed orders.")
+    # From `picking_ids`
+    scheduled_date: datetime | None = Field(
+        description="Scheduled time for the first part of the shipment to be processed. "
+        "Setting manually a value here would set it as expected date for all the stock moves.",
+    )
+    date_deadline: datetime | None = Field(
+        description="Date Promise to the customer on the top level document (SO/PO)"
+    )
+    # Expected Date. Delivery date you can promise to the customer,
+    # computed from the minimum lead time of the order lines.
+    expected_date: datetime | None = Field(
+        default=None,
+        description="Delivery date you can promise to the customer, "
+        "computed from the minimum lead time of the order lines.",
+    )
+    # # Delivery Date. Delivery date promised to customer.  @NOTE For me, not reliable
+    # commitment_date: datetime | None = Field(
+    #     description="Delivery date promised to customer."
+    # )
+    # TODO Better documentation of fields by using custom `Field`
     state: str
     delivery_address: PartnerDeliveryAddress = None
     require_signature: bool = None
@@ -79,7 +98,10 @@ class Order(pydantic.BaseModel):
             id=p.id,
             display_name=p.display_name,
             date_order=p.date_order,
-            commitment_date=p.commitment_date if p.commitment_date else None,
+            scheduled_date=p.picking_ids.scheduled_date,
+            date_deadline=p.picking_ids.date_deadline,
+            expected_date=p.expected_date,
+            # commitment_date=p.commitment_date if p.commitment_date else None,
             state=cls._state(p.picking_ids.state),
             delivery_address=delivery_address,
             require_signature=p.require_signature,
