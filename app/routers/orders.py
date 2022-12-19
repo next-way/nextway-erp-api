@@ -94,6 +94,12 @@ class Order(pydantic.BaseModel):
             delivery_address.display_address = rec_delivery_address._display_address()
             delivery_address.state = rec_delivery_address.state_id.name or ""
             delivery_address.country = rec_delivery_address.country_id.name or ""
+            delivery_address.partner_latitude = (
+                delivery_address.partner_latitude or p.partner_id.partner_latitude
+            )
+            delivery_address.partner_longitude = (
+                delivery_address.partner_longitude or p.partner_id.partner_longitude
+            )
         return Order(
             id=p.id,
             display_name=p.display_name,
