@@ -258,11 +258,16 @@ async def accept(
     return {"object_id": order_obj.id}
 
 
+class DropOffRequestBody(BaseModel):
+    drop_off_datetime: Optional[datetime]
+    collection_datetime: Optional[datetime]
+    message: Optional[str]
+
+
 @router.post("/{order_id}/drop-off")
 async def drop_off(
     order_id: int,
-    drop_off_datetime: Optional[datetime],
-    collection_datetime: Optional[datetime],
+    request_body: DropOffRequestBody,
     env: odoo.api.Environment = Depends(odoo_env),
     current_user: User = Security(get_current_active_user, scopes=["orders:post"]),
 ):
@@ -289,23 +294,32 @@ async def drop_off(
             )
 
     # Mark order drop off time when provided
-    if drop_off_datetime:
+    if request_body.drop_off_datetime:
         order_obj._message_log(
             body=_(
                 "Drop off by %(user_name)s (#%(user_id)s) on %(timestamp)s",
                 user_name=current_user.username,
                 user_id=odoo_user.id,
-                timestamp=str(drop_off_datetime),
+                timestamp=str(request_body.drop_off_datetime),
             )
         )
     # Mark collected payment time when provided
-    if collection_datetime:
+    if request_body.collection_datetime:
         order_obj._message_log(
             body=_(
                 "Collection of payment by %(user_name)s (#%(user_id)s) on %(timestamp)s",
                 user_name=current_user.username,
                 user_id=odoo_user.id,
-                timestamp=str(collection_datetime),
+                timestamp=str(request_body.collection_datetime),
+            )
+        )
+    if request_body.message:
+        order_obj._message_log(
+            body=_(
+                "Drop off message by %(user_name)s (#%(user_id)s) <br/><br/> %(message)s",
+                user_name=current_user.username,
+                user_id=odoo_user.id,
+                message=request_body.message,
             )
         )
     # Picking
