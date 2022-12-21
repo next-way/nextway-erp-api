@@ -13,7 +13,10 @@ from .routers import authentication, orders, partners
 log_file_path = path.join(path.dirname(path.abspath(__file__)), "logging.conf")
 logging.config.fileConfig(log_file_path, disable_existing_loggers=False)
 
-app = FastAPI()
+app = FastAPI(
+    title="Nextway ERP API",
+    description="API for the Nextway ERP. Exposed here are services related to sale orders module (more coming soon).",
+)
 
 
 @app.on_event("startup")
