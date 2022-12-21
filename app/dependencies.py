@@ -27,6 +27,7 @@ API_KEY_SCOPE = ",".join(
     [
         "me_profile",
         "orders:list",
+        "orders:post",
     ]
 )
 
@@ -120,6 +121,7 @@ oauth2_scheme = OAuth2PasswordBearer(
     scopes={
         "me_profile": "Read information about the current user",
         "orders:list": "List orders",
+        "orders:post": "Operate on orders",
     },
 )
 

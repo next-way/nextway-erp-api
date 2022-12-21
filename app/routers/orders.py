@@ -1,13 +1,14 @@
 import logging
 from datetime import date, datetime
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
 import odoo
 import pydantic
-from fastapi import APIRouter, Depends, Query, Security
+from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from fastapi_pagination import Page, paginate
-from pydantic import Field
+from odoo import _
+from pydantic import BaseModel, Field
 
 from .. import utils
 from ..dependencies import User, get_current_active_user, get_odoo_user, odoo_env
@@ -17,6 +18,26 @@ router = APIRouter(
     tags=["orders"],
     responses={404: {"description": "Not found"}},
 )
+
+
+class OrderLine(pydantic.BaseModel):
+    order_id: int
+    name: str
+    product_id: int
+    product_uom_qty: float
+    product_uom_name: str = None
+    discount: float
+    price_unit: float
+    price_tax: float
+    price_subtotal: float
+    qty_delivered: float
+    qty_invoiced: float
+    qty_to_invoice: float
+    invoice_status: str
+
+    class Config:
+        orm_mode = True
+        getter_dict = utils.GenericOdooGetter
 
 
 class PartnerDeliveryAddress(pydantic.BaseModel):
@@ -77,6 +98,7 @@ class Order(pydantic.BaseModel):
     is_expired: bool = None
     amount_total: float = None
     # TODO Add order items
+    order_lines: List[OrderLine] = None
 
     @classmethod
     def from_sale_order(
@@ -100,6 +122,13 @@ class Order(pydantic.BaseModel):
             delivery_address.partner_longitude = (
                 delivery_address.partner_longitude or p.partner_id.partner_longitude
             )
+
+        def get_order_line(ol):
+            sale_order_line = OrderLine.from_orm(ol)
+            sale_order_line.product_uom_name = ol.product_uom.display_name
+            return sale_order_line
+
+        order_lines = [get_order_line(ol) for ol in p.order_line]
         return Order(
             id=p.id,
             display_name=p.display_name,
@@ -108,7 +137,7 @@ class Order(pydantic.BaseModel):
             date_deadline=p.picking_ids.date_deadline,
             expected_date=p.expected_date,
             # commitment_date=p.commitment_date if p.commitment_date else None,
-            state=cls._state(p.picking_ids.state),
+            state=cls._state(p, p.picking_ids.state),
             delivery_address=delivery_address,
             require_signature=p.require_signature,
             signed_by=cls._null_for_false(p, "signed_by"),
@@ -117,11 +146,14 @@ class Order(pydantic.BaseModel):
             note=cls._null_for_false(p, "note"),
             is_expired=p.is_expired,
             amount_total=p.amount_total,
+            order_lines=order_lines,
         )
 
     @classmethod
-    def _state(cls, state):
-        if not state:
+    def _state(cls, order, state):
+        if not state or (
+            state == PickingState.assigned and order.picking_ids.user_id.id is False
+        ):
             return "unassigned"
         return state
 
@@ -156,17 +188,247 @@ class PickingState(str, Enum):
     unassigned = "unassigned"
 
 
+CANCELLABLE_ORDER_PICKING_STATES = (PickingState.assigned,)
+
+
+class OrderNotFoundException(Exception):
+    pass
+
+
+def get_order_obj(order_id: int, env: odoo.api.Environment, current_user: User):
+    __, odoo_user = get_odoo_user(current_user.username)
+    order_obj = env["sale.order"].browse(order_id).with_user(odoo_user)
+    error_header = None
+    if not order_obj.exists():
+        error_header = "Order does not exist"
+    elif len(order_obj.picking_ids) == 0:
+        # Must have picking already
+        error_header = "Order must have picking"
+    if error_header:
+        raise OrderNotFoundException(error_header)
+    return order_obj
+
+
+@router.post("/{order_id}/accept")
+async def accept(
+    order_id: int,
+    env: odoo.api.Environment = Depends(odoo_env),
+    current_user: User = Security(get_current_active_user, scopes=["orders:post"]),
+):
+    """Accept order job. Only for unassigned orders."""
+    __, odoo_user = get_odoo_user(current_user.username)
+    try:
+        order_obj = get_order_obj(order_id, env, current_user)
+    except OrderNotFoundException as e:
+        return HTTPException(
+            status_code=404, detail="Order not found", headers={"X-Error": str(e)}
+        )
+    else:
+        # More validations
+        error_header = None
+        if (
+            order_obj.picking_ids.user_id.id is not False
+            and order_obj.picking_ids.user_id.id != odoo.SUPERUSER_ID
+        ):
+            # Already assigned (and is not Odoo bot)
+            error_header = "Order can't be self-assigned"
+        if order_obj.picking_ids.user_id.id == odoo_user.id:
+            # Already assigned to driver
+            error_header = "Order already assigned to driver"
+        if error_header:
+            return HTTPException(
+                status_code=404,
+                detail="Order not found",
+                headers={"X-Error": error_header},
+            )
+
+    picking = order_obj.picking_ids
+    # Log self-assignment on the picking
+    message = _(
+        "Self-assign delivery responsible by %(user_name)s (#%(user_id)s) on %(timestamp)s",
+        user_name=current_user.username,
+        user_id=odoo_user.id,
+        timestamp=datetime.now().isoformat(),
+    )
+    picking._message_log(body=message)
+    # Log self-assignment on the order
+    order_obj._message_log(body=message)
+    # Self-assign driver to picking
+    picking.write({"user_id": odoo_user.id})
+    return {"object_id": order_obj.id}
+
+
+@router.post("/{order_id}/drop-off")
+async def drop_off(
+    order_id: int,
+    drop_off_datetime: Optional[datetime],
+    collection_datetime: Optional[datetime],
+    env: odoo.api.Environment = Depends(odoo_env),
+    current_user: User = Security(get_current_active_user, scopes=["orders:post"]),
+):
+    """Drop off job. Driver arrives at the delivery address, drop-off packages, collect payment,
+    and mark the order as complete."""
+    __, odoo_user = get_odoo_user(current_user.username)
+    try:
+        order_obj = get_order_obj(order_id, env, current_user)
+    except OrderNotFoundException as e:
+        return HTTPException(
+            status_code=404, detail="Order not found", headers={"X-Error": str(e)}
+        )
+    else:
+        # More validations
+        error_header = None
+        if order_obj.picking_ids.user_id.id != odoo_user.id:
+            # Restrict order is assigned to the requestor
+            error_header = "User not allowed to modify order"
+        if error_header:
+            return HTTPException(
+                status_code=404,
+                detail="Order not found",
+                headers={"X-Error": error_header},
+            )
+
+    # Mark order drop off time when provided
+    if drop_off_datetime:
+        order_obj._message_log(
+            body=_(
+                "Drop off by %(user_name)s (#%(user_id)s) on %(timestamp)s",
+                user_name=current_user.username,
+                user_id=odoo_user.id,
+                timestamp=str(drop_off_datetime),
+            )
+        )
+    # Mark collected payment time when provided
+    if collection_datetime:
+        order_obj._message_log(
+            body=_(
+                "Collection of payment by %(user_name)s (#%(user_id)s) on %(timestamp)s",
+                user_name=current_user.username,
+                user_id=odoo_user.id,
+                timestamp=str(collection_datetime),
+            )
+        )
+    # Picking
+    picking = order_obj.picking_ids
+    picking.button_validate()
+    return {"object_id": order_obj.id}
+
+
+class CancelBody(BaseModel):
+    message: str
+
+
+@router.post("/{order_id}/cancel-order")
+async def cancel_order(
+    order_id: int,
+    request_body: CancelBody,
+    env: odoo.api.Environment = Depends(odoo_env),
+    current_user: User = Security(get_current_active_user, scopes=["orders:post"]),
+):
+    """Cancel order itself. Only possible for orders assigned to the requestor."""
+    __, odoo_user = get_odoo_user(current_user.username)
+    try:
+        order_obj = get_order_obj(order_id, env, current_user)
+    except OrderNotFoundException as e:
+        return HTTPException(
+            status_code=404, detail="Order not found", headers={"X-Error": str(e)}
+        )
+    else:
+        # More validations
+        error_header = None
+        if order_obj.picking_ids.user_id.id != odoo_user.id:
+            # Restrict order is assigned to the requestor
+            error_header = "User not allowed to modify order"
+        elif order_obj.picking_ids.state not in CANCELLABLE_ORDER_PICKING_STATES:
+            # Restrict allowed order status that can be cancelled
+            error_header = "Order cannot be cancelled"
+        if error_header:
+            return HTTPException(
+                status_code=404,
+                detail="Order not found",
+                headers={"X-Error": error_header},
+            )
+
+    # Do order cancellation
+    order_obj._action_cancel()
+    # TODO As in Odoo, trigger sending notification to followers of the order thread
+    # Log note to the sale order
+    message = request_body.message
+    order_obj._message_log(
+        body=_(
+            "Cancelled by %(user_name)s (#%(user_id)s). Message: <br/>%(message)s",
+            user_name=current_user.username,
+            user_id=odoo_user.id,
+            message=message,
+        )
+    )
+    return {"object_id": order_obj.id}
+
+
+@router.post("/{order_id}/cancel-job")
+async def cancel_order_job(
+    order_id: int,
+    request_body: CancelBody,
+    env: odoo.api.Environment = Depends(odoo_env),
+    current_user: User = Security(get_current_active_user, scopes=["orders:post"]),
+):
+    """Unassign the job. Only possible for orders assigned to the requestor."""
+    __, odoo_user = get_odoo_user(current_user.username)
+    try:
+        order_obj = get_order_obj(order_id, env, current_user)
+    except OrderNotFoundException as e:
+        return HTTPException(
+            status_code=404, detail="Order not found", headers={"X-Error": str(e)}
+        )
+    else:
+        # More validations
+        error_header = None
+        if order_obj.picking_ids.user_id.id != odoo_user.id:
+            # Restrict order is assigned to the requestor
+            error_header = "User not allowed to modify order"
+        elif order_obj.picking_ids.state not in CANCELLABLE_ORDER_PICKING_STATES:
+            # Restrict allowed order status that can be cancelled
+            error_header = "Order cannot be cancelled"
+        if error_header:
+            return HTTPException(
+                status_code=404,
+                detail="Order not found",
+                headers={"X-Error": error_header},
+            )
+
+    # Do order unassignment
+    picking = order_obj.picking_ids
+    # Log self-unassignment on the picking
+    message = _(
+        "Remove assignment of %(user_name)s (#%(user_id)s) for delivery (#%(picking_id)s) on %(timestamp)s",
+        user_name=current_user.username,
+        user_id=odoo_user.id,
+        picking_id=picking.id,
+        timestamp=datetime.now().isoformat(),
+    )
+    message += "<br/>" + request_body.message
+    picking._message_log(body=message)
+    # Log self-unassignment on the order
+    order_obj._message_log(body=message)
+    # Remove driver assignment to picking
+    picking.write({"user_id": False})
+    return {"object_id": order_obj.id}
+
+
 @router.get("/", response_model=Page[Order])
 async def list_orders(
-    state: Optional[list[str]] = Query(
+    state: Optional[list[PickingState]] = Query(
         default=[PickingState.assigned],
+        # choices=[s.value for s in PickingState],
         choices=[s.value for s in PickingState],
         description=STATE_DESCRIPTION,
     ),
     env: odoo.api.Environment = Depends(odoo_env),
     current_user: User = Security(get_current_active_user, scopes=["orders:list"]),
 ):
-    domain = []
+    domain = [
+        ("picking_ids", "!=", False)
+    ]  # Must only return those that have pickings already
     all_orders = env["sale.order"].search(domain)
     # Filtering from state
     show_unassigned = False
@@ -180,7 +442,14 @@ async def list_orders(
         and o.picking_ids.user_id.id == odoo_user.id
     )
     if show_unassigned:
-        orders |= all_orders.filtered(lambda o: not o.picking_ids.state)
+        # Picking status is "ready" (assigned) but no one really is set as responsible
+        orders |= all_orders.filtered(
+            lambda o: not o.picking_ids.state
+            or (
+                o.picking_ids.state == PickingState.assigned
+                and o.picking_ids.user_id.id is False
+            )
+        )
     # TODO Paginate `orders` instead?
     # TODO BUG size is returning length of array instead of matched states/query. total and size are both correct.
     return paginate([Order.from_sale_order(order, env) for order in orders])
