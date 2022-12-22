@@ -69,16 +69,16 @@ class Order(pydantic.BaseModel):
     # Order date. Creation date of draft/sent orders. Confirmation date of confirmed orders.
     date_order: datetime = Field(description="Confirmation date of confirmed orders.")
     # From `picking_ids`
-    scheduled_date: datetime | None = Field(
+    scheduled_date: Optional[datetime] = Field(
         description="Scheduled time for the first part of the shipment to be processed. "
         "Setting manually a value here would set it as expected date for all the stock moves.",
     )
-    date_deadline: datetime | None = Field(
+    date_deadline: Optional[datetime] = Field(
         description="Date Promise to the customer on the top level document (SO/PO)"
     )
     # Expected Date. Delivery date you can promise to the customer,
     # computed from the minimum lead time of the order lines.
-    expected_date: datetime | None = Field(
+    expected_date: Optional[datetime] = Field(
         default=None,
         description="Delivery date you can promise to the customer, "
         "computed from the minimum lead time of the order lines.",
@@ -97,7 +97,6 @@ class Order(pydantic.BaseModel):
     note: str = None
     is_expired: bool = None
     amount_total: float = None
-    # TODO Add order items
     order_lines: List[OrderLine] = None
 
     @classmethod
@@ -147,6 +146,7 @@ class Order(pydantic.BaseModel):
             is_expired=p.is_expired,
             amount_total=p.amount_total,
             order_lines=order_lines,
+            # share_url=f"{p.get_base_url()}{p._get_share_url(redirect=True)}",
         )
 
     @classmethod

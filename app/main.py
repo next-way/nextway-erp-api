@@ -5,7 +5,7 @@ import odoo
 from fastapi import FastAPI
 from fastapi_pagination import add_pagination
 
-from .routers import authentication, orders, partners
+from .routers import authentication, orders, stats
 
 # Follows https://fastapi.tiangolo.com/tutorial/bigger-applications/
 # Follows https://github.com/acsone/odooxp2021-fastapi/blob/master/odoo_fastapi_demo/app.py
@@ -39,6 +39,7 @@ app.include_router(authentication.router)
 # TODO Consider removing partners/ completely. Only here to test unprotected API endpoint
 # app.include_router(partners.router)
 app.include_router(orders.router)
+app.include_router(stats.router)
 
 # Must be added last
 add_pagination(app)
